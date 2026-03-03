@@ -17,6 +17,16 @@ A GitHub Action for [RubyFast](https://github.com/7a6163/rubyfast) — a blazing
 | `path` | Path to scan (file or directory) | `.` |
 | `version` | RubyFast version (e.g. `1.0.0`) | `latest` |
 | `args` | Additional arguments passed to rubyfast | |
+| `reviewdog` | Enable reviewdog inline PR comments | `false` |
+| `github-token` | GitHub token for reviewdog API access | `${{ github.token }}` |
+| `reviewdog-reporter` | reviewdog reporter | `github-pr-review` |
+| `reviewdog-filter-mode` | reviewdog filter mode | `added` |
+
+### Outputs
+
+| Output | Description |
+|--------|-------------|
+| `exit-code` | Exit code from rubyfast (0=clean, 1=offenses found) |
 
 ### Example: Basic
 
@@ -30,6 +40,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: 7a6163/rubyfast-action@v1
+```
+
+### Example: With reviewdog
+
+```yaml
+name: Lint
+on: [pull_request]
+
+jobs:
+  rubyfast:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: 7a6163/rubyfast-action@v1
+        with:
+          reviewdog: "true"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          reviewdog-reporter: github-pr-review
 ```
 
 ### Example: Scan specific directory

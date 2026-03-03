@@ -19,15 +19,107 @@ inputs:
     description: "Additional arguments to pass to rubyfast"
     required: false
     default: ""
+  reviewdog:
+    description: "Enable reviewdog to post inline PR comments for findings"
+    required: false
+    default: "false"
+  github-token:
+    description: "GitHub token for reviewdog API access"
+    required: false
+    default: "${{ github.token }}"
+  reviewdog-reporter:
+    description: "reviewdog reporter (github-pr-review, github-pr-check, github-check)"
+    required: false
+    default: "github-pr-review"
+  reviewdog-filter-mode:
+    description: "reviewdog filter mode (added, diff_context, file, nofilter)"
+    required: false
+    default: "added"
+
+outputs:
+  exit-code:
+    description: "Exit code from rubyfast (0=clean, 1=offenses found)"
+    value: ${{ steps.scan.outputs.exit-code }}
 
 runs:
   using: "composite"
   steps:
-    - name: Run RubyFast
+    - name: Detect platform
+      id: platform
       shell: bash
       run: |
-        docker pull "ghcr.io/7a6163/rubyfast:${{ inputs.version }}"
-        docker run --rm \
-          -v "${{ github.workspace }}:/workspace" \
-          "ghcr.io/7a6163/rubyfast:${{ inputs.version }}" \
-          ${{ inputs.args }} ${{ inputs.path }}
+        case "${{ runner.os }}-${{ runner.arch }}" in
+          Linux-X64)   target="x86_64-unknown-linux-gnu" ;;
+          Linux-ARM64) target="aarch64-unknown-linux-gnu" ;;
+          macOS-X64)   target="x86_64-apple-darwin" ;;
+          macOS-ARM64) target="aarch64-apple-darwin" ;;
+          Windows-X64) target="x86_64-pc-windows-msvc" ;;
+          *) echo "::error::Unsupported platform: ${{ runner.os }}-${{ runner.arch }}" && exit 1 ;;
+        esac
+        echo "target=$target" >> "$GITHUB_OUTPUT"
+
+    - name: Download rubyfast
+      id: download
+      shell: bash
+      run: |
+        version="${{ inputs.version }}"
+        target="${{ steps.platform.outputs.target }}"
+
+        if [ "$version" = "latest" ]; then
+          download_url=$(curl -sL \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ inputs.github-token }}" \
+            "https://api.github.com/repos/7a6163/rubyfast/releases/latest" \
+            | grep "browser_download_url.*${target}" \
+            | head -1 \
+            | cut -d '"' -f 4)
+        else
+          download_url="https://github.com/7a6163/rubyfast/releases/download/v${version}/rubyfast-${target}.tar.gz"
+        fi
+
+        if [ -z "$download_url" ]; then
+          echo "::error::Could not find rubyfast release for target ${target}"
+          exit 1
+        fi
+
+        echo "Downloading rubyfast from ${download_url}"
+        curl -sL "$download_url" -o rubyfast.tar.gz
+        tar -xzf rubyfast.tar.gz
+        chmod +x rubyfast
+        echo "bin=${{ github.workspace }}/rubyfast" >> "$GITHUB_OUTPUT"
+
+    - name: Run rubyfast
+      id: scan
+      shell: bash
+      run: |
+        set +e
+        NO_COLOR=1 ${{ steps.download.outputs.bin }} ${{ inputs.args }} ${{ inputs.path }}
+        code=$?
+        set -e
+
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        exit $code
+
+    - name: Install reviewdog
+      if: inputs.reviewdog == 'true' && (success() || failure())
+      uses: reviewdog/action-setup@v1
+      with:
+        reviewdog_version: v0.21.0
+
+    - name: Report findings with reviewdog
+      if: inputs.reviewdog == 'true' && (success() || failure())
+      shell: bash
+      env:
+        REVIEWDOG_GITHUB_API_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set +e
+        NO_COLOR=1 ${{ steps.download.outputs.bin }} ${{ inputs.args }} ${{ inputs.path }} 2>/dev/null \
+          | grep -E '^.+\.rb:[0-9]+ .+' \
+          | reviewdog \
+              -efm='%f:%l %m' \
+              -name=rubyfast \
+              -reporter="${{ inputs.reviewdog-reporter }}" \
+              -filter-mode="${{ inputs.reviewdog-filter-mode }}" \
+              -fail-level=none \
+              -level=warning
+        set -e
