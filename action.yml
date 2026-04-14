@@ -1,4 +1,4 @@
-name: "RubyFast"
+name: "RubyFast Linter"
 description: "A blazing-fast Ruby performance linter written in Rust"
 author: "7a6163"
 
