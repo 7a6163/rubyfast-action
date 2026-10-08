@@ -15,7 +15,7 @@ A GitHub Action for [RubyFast](https://github.com/7a6163/rubyfast) — a blazing
 | Input | Description | Default |
 |-------|-------------|---------|
 | `path` | Path to scan (file or directory) | `.` |
-| `version` | RubyFast version (e.g. `1.0.0`) | `latest` |
+| `version` | RubyFast version (e.g. `2.0.0`) | `latest` |
 | `args` | Additional arguments passed to rubyfast | |
 | `reviewdog` | Enable reviewdog inline PR comments | `false` |
 | `github-token` | GitHub token for reviewdog API access | `${{ github.token }}` |
@@ -38,7 +38,7 @@ jobs:
   rubyfast:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: 7a6163/rubyfast-action@v1
 ```
 
@@ -56,7 +56,7 @@ jobs:
       checks: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: 7a6163/rubyfast-action@v1
         with:
           reviewdog: "true"
@@ -77,7 +77,7 @@ jobs:
 ```yaml
 - uses: 7a6163/rubyfast-action@v1
   with:
-    version: "1.0.0"
+    version: "2.0.0"
 ```
 
 ## License

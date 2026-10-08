@@ -64,6 +64,8 @@ runs:
       run: |
         version="${{ inputs.version }}"
         target="${{ steps.platform.outputs.target }}"
+        ext="tar.gz"; exe="rubyfast"
+        if [ "${{ runner.os }}" = "Windows" ]; then ext="zip"; exe="rubyfast.exe"; fi
 
         if [ "$version" = "latest" ]; then
           download_url=$(curl -sL \
@@ -74,7 +76,7 @@ runs:
             | head -1 \
             | cut -d '"' -f 4)
         else
-          download_url="https://github.com/7a6163/rubyfast/releases/download/v${version}/rubyfast-${target}.tar.gz"
+          download_url="https://github.com/7a6163/rubyfast/releases/download/v${version}/rubyfast-${target}.${ext}"
         fi
 
         if [ -z "$download_url" ]; then
@@ -83,10 +85,11 @@ runs:
         fi
 
         echo "Downloading rubyfast from ${download_url}"
-        curl -sL "$download_url" -o rubyfast.tar.gz
-        tar -xzf rubyfast.tar.gz
-        chmod +x rubyfast
-        echo "bin=${{ github.workspace }}/rubyfast" >> "$GITHUB_OUTPUT"
+        curl -fsSL "$download_url" -o "rubyfast.${ext}"
+        if [ "$ext" = "zip" ]; then unzip -o -q rubyfast.zip; else tar -xzf rubyfast.tar.gz; fi
+        chmod +x "$exe"
+        # $PWD, not github.workspace: Windows backslash paths break unquoted in bash
+        echo "bin=$PWD/$exe" >> "$GITHUB_OUTPUT"
 
     - name: Run rubyfast
       id: scan
@@ -104,7 +107,7 @@ runs:
       if: inputs.reviewdog == 'true' && (success() || failure())
       uses: reviewdog/action-setup@v1
       with:
-        reviewdog_version: v0.21.0
+        reviewdog_version: v0.21.2
 
     - name: Report findings with reviewdog
       if: inputs.reviewdog == 'true' && (success() || failure())
@@ -113,7 +116,7 @@ runs:
         REVIEWDOG_GITHUB_API_TOKEN: ${{ inputs.github-token }}
       run: |
         set +e
-        NO_COLOR=1 ${{ steps.download.outputs.bin }} ${{ inputs.args }} ${{ inputs.path }} 2>/dev/null \
+        NO_COLOR=1 ${{ steps.download.outputs.bin }} --format plain ${{ inputs.args }} ${{ inputs.path }} 2>/dev/null \
           | grep -E '^.+\.rb:[0-9]+ .+' \
           | reviewdog \
               -efm='%f:%l %m' \
